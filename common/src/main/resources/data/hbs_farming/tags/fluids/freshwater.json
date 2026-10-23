@@ -1,0 +1,7 @@
+{
+  "replace": false,
+  "values": [
+    "hbs_farming:freshwater",
+    "hbs_farming:flowing_freshwater"
+  ]
+}
