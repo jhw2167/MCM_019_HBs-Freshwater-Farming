@@ -1,21 +1,31 @@
 package com.holybuckets.farming;
 
 
-import com.holybuckets.foundation.event.EventRegistrar;
 import com.holybuckets.farming.config.FreshwaterFarmingConfig;
 import com.holybuckets.farming.config.ModConfig;
+import com.holybuckets.farming.core.CropGrowthManager;
+import com.holybuckets.foundation.event.EventRegistrar;
 import net.blay09.mods.balm.api.Balm;
 import net.blay09.mods.balm.api.event.EventPriority;
+import net.blay09.mods.balm.api.event.LevelLoadingEvent;
 import net.blay09.mods.balm.api.event.server.ServerStartingEvent;
+import net.blay09.mods.balm.api.event.server.ServerStoppedEvent;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.LevelAccessor;
+
+import javax.annotation.Nullable;
 
 /**
  * Main instance of the mod, initialize this class statically via commonClass
  * This class will init all major Manager instances and events for the mod
  */
 public class FreshwaterFarmingMain {
-    private static boolean DEV_MODE = false;;
-    private static FreshwaterFarmingConfig CONFIG;
+    private static boolean DEV_MODE = false;
     public static FreshwaterFarmingMain INSTANCE;
+
+    private FreshwaterFarmingConfig generalConfig;
+    private ModConfig modConfig;
 
     public FreshwaterFarmingMain()
     {
@@ -38,20 +48,58 @@ public class FreshwaterFarmingMain {
 
         //Events
         EventRegistrar registrar = EventRegistrar.getInstance();
-        //ChallengeBlockBehavior.init(registrar);
-        ModConfig.init(registrar);
-
+        CropGrowthManager.init(registrar);
 
         //register local events
-        registrar.registerOnBeforeServerStarted(this::onServerStarting);
+        registrar.registerOnBeforeServerStarted(this::onBeforeServerStarted, EventPriority.High);
+        registrar.registerOnLevelLoad(this::onLevelLoad, EventPriority.Normal);
+        registrar.registerOnLevelUnload(this::onLevelUnload, EventPriority.Low);
+        registrar.registerOnServerStopped(this::onServerStopped, EventPriority.Low);
 
     }
 
-    private void onServerStarting(ServerStartingEvent e) {
-        CONFIG = Balm.getConfig().getActiveConfig(FreshwaterFarmingConfig.class);
-        //this.DEV_MODE = CONFIG.devMode;
-        this.DEV_MODE = false;
+    /** Order matters: general config, then json configs, then managers that read them; levels load after this. */
+    private void onBeforeServerStarted(ServerStartingEvent e) {
+        MinecraftServer server = e.getServer();
+
+        generalConfig = Balm.getConfig().getActiveConfig(FreshwaterFarmingConfig.class);
+        DEV_MODE = false;
+
+        modConfig = ModConfig.getInstance();
+        modConfig.load(server.registryAccess(), generalConfig);
+
+        CropGrowthManager.onServerStarting(server, generalConfig, modConfig);
     }
 
+    private void onLevelLoad(LevelLoadingEvent.Load e) {
+        if (e.getLevel() instanceof ServerLevel level) {
+            CropGrowthManager.onLevelLoad(level);
+        }
+    }
+
+    private void onLevelUnload(LevelLoadingEvent.Unload e) {
+        CropGrowthManager.onLevelUnload(e.getLevel());
+    }
+
+    private void onServerStopped(ServerStoppedEvent e) {
+        CropGrowthManager.onServerStopped();
+        modConfig = null;
+        generalConfig = null;
+        ModConfig.clear();
+    }
+
+
+    public FreshwaterFarmingConfig getGeneralConfig() {
+        return generalConfig;
+    }
+
+    public ModConfig getModConfig() {
+        return modConfig;
+    }
+
+    @Nullable
+    public CropGrowthManager getCropGrowthManager(LevelAccessor level) {
+        return CropGrowthManager.get(level);
+    }
 
 }

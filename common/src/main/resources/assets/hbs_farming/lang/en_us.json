@@ -1,4 +1,9 @@
 {
   "block.hbs_farming.freshwater": "Freshwater",
-  "item.hbs_farming.freshwater_bucket": "Freshwater Bucket"
+  "item.hbs_farming.freshwater_bucket": "Freshwater Bucket",
+  "item.hbs_farming.farmers_almanac": "Farmer's Almanac",
+  "book.hbs_farming.almanac.crop": "Crop: %s",
+  "book.hbs_farming.almanac.favorable": "Grows favorably in: %s",
+  "book.hbs_farming.almanac.poor": "Grows poorly in: %s",
+  "book.hbs_farming.almanac.none": "None"
 }

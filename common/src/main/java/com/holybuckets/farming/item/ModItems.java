@@ -16,10 +16,12 @@ public class ModItems {
     public static DeferredObject<CreativeModeTab> creativeModeTab;
     public static Item emptyBlockItem;
     public static Item freshwaterBucket;
+    public static Item farmersAlmanac;
 
     public static void initialize(BalmItems items) {
         //items.registerItem(() -> emptyBlockItem = new EmptyBlockItem(items.itemProperties()), id("empty_block"));
         items.registerItem(() -> freshwaterBucket = Services.PLATFORM.createFreshwaterBucket(bucketProperties()), id("freshwater_bucket"));
+        items.registerItem(() -> farmersAlmanac = new FarmersAlmanacItem(new Item.Properties().stacksTo(1)), id("farmers_almanac"));
         creativeModeTab = items.registerCreativeModeTab(id(Constants.MOD_ID), () -> new ItemStack(ModBlocks.templateBlock));
     }
 

@@ -5,13 +5,10 @@ import com.google.gson.JsonParser;
 import com.holybuckets.farming.LoggerProject;
 import com.holybuckets.farming.config.json.CropBiomeMatrixJsonConfig;
 import com.holybuckets.farming.config.model.CropBiomeMatrix;
+import com.holybuckets.farming.fluid.FreshwaterFluid;
 import com.holybuckets.foundation.HBUtil;
-import com.holybuckets.foundation.event.EventRegistrar;
 import com.holybuckets.foundation.modelInterface.IStringSerializable;
-import net.blay09.mods.balm.api.Balm;
-import net.blay09.mods.balm.api.event.EventPriority;
-import net.blay09.mods.balm.api.event.server.ServerStartingEvent;
-import net.blay09.mods.balm.api.event.server.ServerStoppedEvent;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
@@ -19,14 +16,21 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 
 import java.io.File;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public class ModConfig {
 
@@ -34,6 +38,9 @@ public class ModConfig {
     private static ModConfig INSTANCE;
 
     private CropBiomeMatrix cropBiomeMatrix = CropBiomeMatrix.EMPTY;
+    private Set<Block> alternateFreshwaterBlocks = Set.of();
+    private Set<Holder<Biome>> alternateRiverBiomes = Set.of();
+    private Set<Item> ignoreNeedsSkylight = Set.of();
 
     public static ModConfig getInstance() {
         if (INSTANCE == null) INSTANCE = new ModConfig();
@@ -42,10 +49,8 @@ public class ModConfig {
 
     private ModConfig() {}
 
-    public static void init(EventRegistrar registrar) {
-        INSTANCE = ModConfig.getInstance();
-        registrar.registerOnBeforeServerStarted(ModConfig::onBeforeServerStarted, EventPriority.High);
-        registrar.registerOnServerStopped(ModConfig::onServerStopped, EventPriority.Low);
+    public static void clear() {
+        INSTANCE = null;
     }
 
 
@@ -53,14 +58,50 @@ public class ModConfig {
         return cropBiomeMatrix;
     }
 
+    public Map<Item, Float> getGrowthModifier(Holder<Biome> biome) {
+        return cropBiomeMatrix.getModifiers(biome);
+    }
+
     public float getGrowthModifier(Holder<Biome> biome, Item seed) {
         return cropBiomeMatrix.getModifier(biome, seed);
     }
 
 
-    private void onBeforeServerStarted(RegistryAccess registries) {
-        FreshwaterFarmingConfig activeConfig = Balm.getConfig().getActiveConfig(FreshwaterFarmingConfig.class);
-        File configFile = new File(activeConfig.cropBiomeMatrixConfig);
+    public boolean hasAlternateFreshwater() {
+        return !alternateFreshwaterBlocks.isEmpty();
+    }
+
+    public boolean isAlternateFreshwater(Block block) {
+        return alternateFreshwaterBlocks.contains(block);
+    }
+
+    /** Seeds listed in ignoreNeedsSkylight grow without open sky. */
+    public boolean ignoresSkylight(Item seed) {
+        return ignoreNeedsSkylight.contains(seed);
+    }
+
+    public boolean hasRiverBiomes() {
+        return !alternateRiverBiomes.isEmpty();
+    }
+
+    /** Whether ordinary water in this biome counts as freshwater; pass the holder from level.getBiome(pos). */
+    public boolean isRiverBiome(Holder<Biome> biome) {
+        return alternateRiverBiomes.contains(biome);
+    }
+
+    /** Freshwater fluid or any block listed in alternateFreshWaterTypes. */
+    public boolean isFreshwaterSource(BlockState state) {
+        return alternateFreshwaterBlocks.contains(state.getBlock()) || FreshwaterFluid.isFreshwater(state.getFluidState());
+    }
+
+
+    /** Called by FreshwaterFarmingMain before the server starts, once the general config is active. */
+    public void load(RegistryAccess registries, FreshwaterFarmingConfig generalConfig) {
+        alternateFreshwaterBlocks = resolveBlocks(generalConfig.alternateFreshWaterTypes);
+        alternateRiverBiomes = resolveBiomes(generalConfig.alternateRiverBiomes, registries);
+        ignoreNeedsSkylight = resolveItems(generalConfig.ignoreNeedsSkylight);
+
+        File configFile = new File(generalConfig.cropBiomeMatrixConfig);
         File defaultConfigFile = new File(CropBiomeMatrixJsonConfig.DEF_CONFIG_FILE_PATH);
 
         String json = HBUtil.FileIO.loadJsonConfigs(configFile, defaultConfigFile, defaultJsonConfig());
@@ -73,11 +114,82 @@ public class ModConfig {
                 "Failed to parse crop biome matrix JSON: %s. Error:\n %s.\n\nDefault configs will be applied",
                 configFile.getAbsolutePath(), e.getMessage());
             LoggerProject.logError(CLASS_ID + "002", msg);
-            entries = CropBiomeMatrixJsonConfig.defaultConfig();
+            entries = CropBiomeMatrixJsonConfig.buildDefaultConfig();
         }
 
         cropBiomeMatrix = resolve(entries, registries);
         LoggerProject.logInfo(CLASS_ID + "001", "Loaded crop growth modifiers for " + cropBiomeMatrix.size() + " biome(s)");
+    }
+
+    private Set<Item> resolveItems(Collection<String> itemNames) {
+        Set<Item> items = new ReferenceOpenHashSet<>();
+        if (itemNames == null) return items;
+
+        for (String name : itemNames) {
+            ResourceLocation id = ResourceLocation.tryParse(name);
+            Optional<Item> item = id == null ? Optional.empty() : BuiltInRegistries.ITEM.getOptional(id);
+            if (item.isEmpty() || item.get() == Items.AIR) {
+                LoggerProject.logWarning(CLASS_ID + "010", "Unknown item '" + name + "' in ignoreNeedsSkylight; skipping");
+                continue;
+            }
+            items.add(item.get());
+        }
+
+        LoggerProject.logInfo(CLASS_ID + "011", items.size() + " seed type(s) grow without skylight");
+        return items;
+    }
+
+    private Set<Block> resolveBlocks(List<String> blockNames) {
+        Set<Block> blocks = new ReferenceOpenHashSet<>();
+        if (blockNames == null) return blocks;
+
+        for (String name : blockNames) {
+            ResourceLocation id = ResourceLocation.tryParse(name);
+            Optional<Block> block = id == null ? Optional.empty() : BuiltInRegistries.BLOCK.getOptional(id);
+            if (block.isEmpty() || block.get() == Blocks.AIR) {
+                LoggerProject.logWarning(CLASS_ID + "006", "Unknown block '" + name + "' in alternateFreshWaterTypes; skipping");
+                continue;
+            }
+            blocks.add(block.get());
+        }
+
+        LoggerProject.logInfo(CLASS_ID + "007", "Treating " + blocks.size() + " alternate block type(s) as freshwater");
+        return blocks;
+    }
+
+    /** Biome ids and #tags become the server's live holders, so lookups match level.getBiome(pos) by identity. */
+    private Set<Holder<Biome>> resolveBiomes(List<String> biomeNames, RegistryAccess registries) {
+        Set<Holder<Biome>> biomes = new ReferenceOpenHashSet<>();
+        if (biomeNames == null) return biomes;
+        Registry<Biome> biomeRegistry = registries.registryOrThrow(Registries.BIOME);
+
+        for (String name : biomeNames) {
+            boolean isTag = name.startsWith("#");
+            ResourceLocation id = ResourceLocation.tryParse(isTag ? name.substring(1) : name);
+            if (id == null) {
+                LoggerProject.logWarning(CLASS_ID + "008", "Invalid biome '" + name + "' in alternateRiverBiomes; skipping");
+                continue;
+            }
+
+            if (isTag) {
+                Optional<? extends Iterable<Holder<Biome>>> tag = biomeRegistry.getTag(TagKey.create(Registries.BIOME, id));
+                if (tag.isEmpty()) {
+                    LoggerProject.logWarning(CLASS_ID + "008", "Unknown biome tag '" + name + "' in alternateRiverBiomes; skipping");
+                    continue;
+                }
+                tag.get().forEach(biomes::add);
+            } else {
+                Optional<Holder.Reference<Biome>> biome = biomeRegistry.getHolder(ResourceKey.create(Registries.BIOME, id));
+                if (biome.isEmpty()) {
+                    LoggerProject.logWarning(CLASS_ID + "008", "Unknown biome '" + name + "' in alternateRiverBiomes; skipping");
+                    continue;
+                }
+                biomes.add(biome.get());
+            }
+        }
+
+        LoggerProject.logInfo(CLASS_ID + "009", "Treating water in " + biomes.size() + " biome(s) as freshwater");
+        return biomes;
     }
 
     /** Turns configured biome and seed names into registry objects; unknown names are skipped with a warning. */
@@ -114,26 +226,12 @@ public class ModConfig {
         return new CropBiomeMatrix(resolved);
     }
 
-    private void onServerStopped() {
-        INSTANCE = null;
-    }
-
-
-    private static void onBeforeServerStarted(ServerStartingEvent event) {
-        getInstance().onBeforeServerStarted(event.getServer().registryAccess());
-    }
-
-    private static void onServerStopped(ServerStoppedEvent event) {
-        getInstance().onServerStopped();
-    }
-
-
     private static IStringSerializable defaultJsonConfig() {
         return new IStringSerializable() {
             @Override
             public String serialize() {
                 return new GsonBuilder().setPrettyPrinting().create()
-                    .toJson(CropBiomeMatrixJsonConfig.toJsonObject(CropBiomeMatrixJsonConfig.defaultConfig()));
+                    .toJson(CropBiomeMatrixJsonConfig.toJsonObject(CropBiomeMatrixJsonConfig.buildDefaultConfig()));
             }
 
             @Override

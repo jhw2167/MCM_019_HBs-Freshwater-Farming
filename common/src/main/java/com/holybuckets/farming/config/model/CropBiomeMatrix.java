@@ -7,9 +7,7 @@ import net.minecraft.world.level.biome.Biome;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Growth speed modifier per seed item per biome, keyed by the server's live registry holders.
- */
+//All stats for Crop growth against every biome
 public class CropBiomeMatrix {
 
     public static final float DEFAULT_MODIFIER = 1f;
@@ -17,7 +15,8 @@ public class CropBiomeMatrix {
 
     private final Map<Holder<Biome>, Map<Item, Float>> modifiers;
 
-    public CropBiomeMatrix(Map<Holder<Biome>, Map<Item, Float>> modifiers) {
+    public CropBiomeMatrix(Map<Holder<Biome>, Map<Item, Float>> modifiers)
+    {
         Map<Holder<Biome>, Map<Item, Float>> sealed = new HashMap<>();
         modifiers.forEach((biome, seeds) -> sealed.put(biome, Map.copyOf(seeds)));
         this.modifiers = Map.copyOf(sealed);
@@ -36,6 +35,11 @@ public class CropBiomeMatrix {
     public Map<Holder<Biome>, Map<Item, Float>> getModifiers() {
         return modifiers;
     }
+
+    public Map<Item, Float> getModifiers(Holder<Biome> biome) {
+        return modifiers.getOrDefault(biome, Map.of());
+    }
+
 
     public int size() {
         return modifiers.size();
