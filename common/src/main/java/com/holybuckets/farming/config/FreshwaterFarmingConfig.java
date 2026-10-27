@@ -20,6 +20,9 @@ public class FreshwaterFarmingConfig {
     @Comment("Where the crop biome matrix json can be found. This file sets a growth speed modifier for each seed in each biome")
     public String cropBiomeMatrixConfig = CropBiomeMatrixJsonConfig.DEF_CONFIG_FILE_PATH;
 
+    @Comment("The stage that a melon or pumpkin plant stem is reset to after the block itself is harvested. Max of 7, which is vanilla. This mod sets it down to 4")
+    public int stemPlantResetAge = 4;
+
     @Comment("Block names the game also treats as freshwater. Any of these within the vanilla range hydrates farmland just like water, e.g. \"minecraft:water_cauldron\"")
     @NestedType(String.class)
     public List<String> alternateFreshWaterTypes = new ArrayList<>();

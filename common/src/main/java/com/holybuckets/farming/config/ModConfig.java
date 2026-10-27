@@ -41,6 +41,10 @@ public class ModConfig {
     private Set<Block> alternateFreshwaterBlocks = Set.of();
     private Set<Holder<Biome>> alternateRiverBiomes = Set.of();
     private Set<Item> ignoreNeedsSkylight = Set.of();
+    private int stemPlantResetAge = DEFAULT_STEM_RESET_AGE;
+
+    public static final int DEFAULT_STEM_RESET_AGE = 4;
+    public static final int MAX_STEM_AGE = 7;
 
     public static ModConfig getInstance() {
         if (INSTANCE == null) INSTANCE = new ModConfig();
@@ -75,6 +79,11 @@ public class ModConfig {
         return alternateFreshwaterBlocks.contains(block);
     }
 
+    /** Age a stem drops back to when its melon or pumpkin is removed. */
+    public int getStemPlantResetAge() {
+        return stemPlantResetAge;
+    }
+
     /** Seeds listed in ignoreNeedsSkylight grow without open sky. */
     public boolean ignoresSkylight(Item seed) {
         return ignoreNeedsSkylight.contains(seed);
@@ -100,6 +109,7 @@ public class ModConfig {
         alternateFreshwaterBlocks = resolveBlocks(generalConfig.alternateFreshWaterTypes);
         alternateRiverBiomes = resolveBiomes(generalConfig.alternateRiverBiomes, registries);
         ignoreNeedsSkylight = resolveItems(generalConfig.ignoreNeedsSkylight);
+        stemPlantResetAge = Math.max(0, Math.min(MAX_STEM_AGE, generalConfig.stemPlantResetAge));
 
         File configFile = new File(generalConfig.cropBiomeMatrixConfig);
         File defaultConfigFile = new File(CropBiomeMatrixJsonConfig.DEF_CONFIG_FILE_PATH);
